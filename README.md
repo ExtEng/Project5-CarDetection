@@ -2,15 +2,19 @@
 [![Udacity - Self-Driving Car NanoDegree](https://s3.amazonaws.com/udacity-sdc/github/shield-carnd.svg)](http://www.udacity.com/drive)
 
 
-In this project, your goal is to write a software pipeline to detect vehicles in a video (start with the test_video.mp4 and later implement on full project_video.mp4), but the main output or product we want you to create is a detailed writeup of the project.  Check out the [writeup template](https://github.com/udacity/CarND-Vehicle-Detection/blob/master/writeup_template.md) for this project and use it as a starting point for creating your own writeup.  
+In this project, My requirements was to write a software pipeline to detect vehicles in a video.  
 
-Creating a great writeup:
----
-A great writeup should include the rubric points as well as your description of how you addressed each point.  You should include a detailed description of the code used in each step (with line-number references and code snippets where necessary), and links to other supporting documents or external references.  You should include images in your writeup to demonstrate how your code works with examples.  
+[//]: # (Image References)
 
-All that said, please be concise!  We're not looking for you to write a book here, just a brief description of how you passed each rubric point, and references to the relevant code :). 
-
-You can submit your writeup in markdown or use another method and submit a pdf instead.
+[image1]: ./output_images/CarImage.jpg "Sample Images of the Car Training Dataset"
+[image2]: ./output_images/NonCarImage.jpg "Sample Images of the Non-Car Training Dataset"
+[image3]: ./output_images/CarHOG_YUV.jpg "Histogram of Gradients for sample car images"
+[image4]: ./output_images/NonCarHOG_YUV.jpg "Histogram of Gradients for sample car images"
+[image5]: ./output_images/SlidingWin.jpg "Sliding & Scaled Search Windows"
+[image6]: ./output_images/HotWin.jpg "Windows with Car Detections"
+[image7]: ./output_images/Heatmap.jpg "Heat Map of all Car Detections"
+[image8]: ./output_images/Heatmap_thres.jpg "Heat Map of all Car Detections after Threshold"
+[image9]: ./output_images/draw_img.jpg "Final Image of Vehicle Detection"
 
 The Project
 ---
@@ -24,14 +28,68 @@ The goals / steps of this project are the following:
 * Run your pipeline on a video stream (start with the test_video.mp4 and later implement on full project_video.mp4) and create a heat map of recurring detections frame by frame to reject outliers and follow detected vehicles.
 * Estimate a bounding box for vehicles detected.
 
-Here are links to the labeled data for [vehicle](https://s3.amazonaws.com/udacity-sdc/Vehicle_Tracking/vehicles.zip) and [non-vehicle](https://s3.amazonaws.com/udacity-sdc/Vehicle_Tracking/non-vehicles.zip) examples to train your classifier.  These example images come from a combination of the [GTI vehicle image database](http://www.gti.ssr.upm.es/data/Vehicle_database.html), the [KITTI vision benchmark suite](http://www.cvlibs.net/datasets/kitti/), and examples extracted from the project video itself.   You are welcome and encouraged to take advantage of the recently released [Udacity labeled dataset](https://github.com/udacity/self-driving-car/tree/master/annotations) to augment your training data.  
+## Step 1: Load & Explore the Data
 
-Some example images for testing your pipeline on single frames are located in the `test_images` folder.  To help the reviewer examine your work, please save examples of the output from each stage of your pipeline in the folder called `ouput_images`, and include them in your writeup for the project by describing what each image shows.    The video called `project_video.mp4` is the video your pipeline should work well on.  
+The Vehicle and Non-Vehicle images were extracted from the provided libraries. I plotted out the images from both datasets (as seen below) to explore the data. From the extracted dataset, the total number of car images was 8792 and the number of non-car images was 8968.
 
-**As an optional challenge** Once you have a working pipeline for vehicle detection, add in your lane-finding algorithm from the last project to do simultaneous lane-finding and vehicle detection!
+![alt text][image1]
+![alt text][image2]
 
-**If you're feeling ambitious** (also totally optional though), don't stop there!  We encourage you to go out and take video of your own, and show us how you would implement this project on a new video!
+## Step 2: Perform HOG Feature Extraction
+In order to grasp which parameters provided the HOG features with the most contrast between vehicles and nonvehicle, I ran the extraction on multiple types of color spaces, RBG, HSV,etc. After a few trials, I found that YUV provided a decent visual contrast in HOG features. These trials extended to training the classifier and getting the testing accuracy as a measure.
 
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
+See Below of an example of HOG features for Grayscale (2nd Coolum) and YUV (Colours 3-5).
+
+![alt text][image3]
+![alt text][image4]
+
+## Step 3: Extract Features and Classify
+The general Methodology follows the same flow as that presented in the course:
+* Extract HOG features (Parameters were tuned)
+  * ColorSpace: RGB, HSV, LUV, YUV & YCrCb.
+  * Orientations: 6 & 9
+  * Pixels per cell 8, 12 & 16
+  * Spatial Size : 24, 32, & 48
+  * Cells per block: 2, 3, & 4
+  * Histogram bins 24, 32, & 48
+* Scale the data and run a classifier
+  * LinearSVC, DecisionTree, & MLPClassifier
+
+After testing all the variations of these parameters, the Classifier testing's accuracy showed that, a MLP classifier running of HOG features (with parameters HSV, 9 orientations, 8 pixels per cell, 32 Spatial Size, 48 Histogram bins) was the best choice at 99.3 % accuracy. However, during implementation and testing on the test images taken from the project video, the Linear SVC (with parameters HSV, 9 orientations, 8 pixels per cell) proved to have the best balance between generalization (performed better on images not seen before) and least false positives. It should be noted the Decision Tree classifier generally had the lowest accuracy between the classifiers.
+
+I also output the classifier's results and the image in question as a sanity check. I computed the classifier's results and image for 20 random images for both car and noncar images
+
+## Step 4: Windowed Search & Vehicle Detection
+
+For the Window search, I tried multiple routines and parameters to optimize processing time and identification. For the Parameters, I trial and errored search window size from (48x48 to 256X256), percent overall (50% to 95 %), and total search bounds from static size to 16 pixel decrement per iteration. The routine which I found yielded the most "hot windows" was a routine were I had 8000 search windows, of varying pixel size from 32x32 to 256x256 (in 16 px increments) and the total search bounds was y =(380 to 650) x =(full range). However, this also had multiple false positives and took approximately 13 hours to finish computing the project video. Video is labelled Output_project_video_scanwindow_48_no_resize.mp4. However, this is not that can be practically done in real time. From this maximum "capture" point I lowered my search windows until I achieved a balance in computing and "detection". 
+
+The final implementation used scaling factor approach. Starting from max search window size 256x256, y search bounds (between 380 to 650) both where decremented by 16 pixels, i.e. 2nd rounds search window size was 240*240 and y bounds were between 380 to 644. with 80% percent overlay. The derivation and labelling of the "positive car" results code and methodology follows code presented in class.
+
+The Final routine can be seen below:
+* Specify search windows
+![alt text][image5]
+* Find "hot" Windows where classifier predicts 1 i.e. car 
+![alt text][image6]
+* Draw Heat map from all the hot windows 
+![alt text][image7]
+* Apply a threshold to areas where less than or equal to 1 hot window  
+![alt text][image8]
+* Apply a label to the original image that corresponds to the box or boxes that correspond to the threshold heatmap.
+![alt text][image9]
+
+## Step 5: Windowed Search & Vehicle Detection - Video Pipeline
+
+This part was relatively straight forward, where I defined a routine to run the vehicle detection on a video. The processing and video output is imbedded at the end of my Project Jupiter notebook.
+
+The output video for the final submission is labelled:
+Output_project_video_scanwindow_64_16_y_resize.mp4
+
+
+## Discussions
+
+While time was of the essence and the algorithm produced decent results, I still feel like more work is required to make this pipeline robust. 
+* I think including more types of training data of cars, will help generalize and improve results. The data also need to be augmented with different road vehicles, i.e. motorbikes, trucks (trailer, fire, and tow), ambulances etc., because currently the pipeline will fail if any of these vehicles are seen.
+* While this implementation of the routine performed "relatively" fast I still believe this pipeline requires a greater increase in speed to be utilized on the road, without too much measurement delay. 
+* I also think for my future work I can improve the jitter between measurements by applying smoothing between frames maybe using a rolling average of the heat map, and hold the last window if a window was not detected.
+* While images can provide us a cost-effective sensor to detect vehicles far away, I believe this pipeline should be augment with data from a range finder or a radar system to provide more reliable data. 
 
